@@ -1,41 +1,43 @@
 # Core FastAPI and Telegram dependencies
-fastapi==0.95.2
-uvicorn[standard]==0.22.0
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
 python-telegram-bot==20.3
 
 # Database and ORM
-SQLAlchemy==1.4.53
-alembic==1.11.1
+SQLAlchemy>=2.0.0
+alembic>=1.11.0
 
 # HTTP client for AI services
-httpx==0.24.1
+httpx>=0.24.0
 
 # AI Services
 openai>=1.0.0
-google-generativeai==0.3.2
+google-generativeai>=0.3.0
 
 # Environment and configuration
-python-dotenv==1.0.0
-pydantic==1.10.12
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
 
 # Caching and rate limiting
-redis==4.6.0
-aioredis==2.0.1
+redis>=4.6.0
+aioredis>=2.0.0
 
 # Scheduling and background tasks
-APScheduler==3.10.4
+APScheduler>=3.10.0
 
 # RSS feed parsing and timezone handling
-feedparser==6.0.10
-pytz==2023.3
+feedparser>=6.0.0
+pytz>=2023.3
 
 # Logging and monitoring
-structlog==23.1.0
+structlog>=23.1.0
 
 # Security and validation
-cryptography==40.0.2
+cryptography>=40.0.0
 
 # Testing (development only)
-pytest==7.3.1
-pytest-asyncio==0.21.1
-pydantic-settings>=2.0.0
+pytest>=7.3.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.0.0
+pytest-mock>=3.10.0
