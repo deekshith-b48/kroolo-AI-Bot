@@ -115,6 +115,21 @@ class KrooloBot:
         self.application.add_handler(CommandHandler("news", self.engagement_commands.news_command))
         self.application.add_handler(CommandHandler("quiz", self.engagement_commands.quiz_command))
         self.application.add_handler(CommandHandler("funfact", self.engagement_commands.funfact_command))
+        self.application.add_handler(CommandHandler("joke", self.engagement_commands.joke_command))
+        self.application.add_handler(CommandHandler("leaderboard", self.engagement_commands.leaderboard_command))
+        self.application.add_handler(CommandHandler("mystats", self.engagement_commands.mystats_command))
+        
+        # Scheduling commands (Admin only)
+        self.application.add_handler(CommandHandler("setnews", self.engagement_commands.setnews_command))
+        self.application.add_handler(CommandHandler("stopnews", self.engagement_commands.stopnews_command))
+        self.application.add_handler(CommandHandler("setquiz", self.engagement_commands.setquiz_command))
+        self.application.add_handler(CommandHandler("stopquiz", self.engagement_commands.stopquiz_command))
+        self.application.add_handler(CommandHandler("setfunfact", self.engagement_commands.setfunfact_command))
+        self.application.add_handler(CommandHandler("stopfunfact", self.engagement_commands.stopfunfact_command))
+        self.application.add_handler(CommandHandler("listjobs", self.engagement_commands.listjobs_command))
+        
+        # Help commands
+        self.application.add_handler(CommandHandler("help_engagement", self.engagement_commands.help_engagement_command))
         
         # Inline query handler
         self.application.add_handler(InlineQueryHandler(self.inline_handler.handle_inline_query))

@@ -23,6 +23,43 @@ class CommunityEngagementService:
         self.database_path = database_path
         self._init_database()
         
+        # Fun facts database
+        self.fun_facts = [
+            "🤖 The first AI program was written in 1951 by Christopher Strachey, which played checkers!",
+            "🧠 ChatGPT was trained on roughly 300 billion words from the internet.",
+            "⚡ Deep Blue, IBM's chess computer, could evaluate 200 million positions per second when it beat Garry Kasparov in 1997.",
+            "🔮 AI can now generate art that has sold for thousands of dollars at auctions.",
+            "🎵 AI can compose music in the style of classical masters like Bach and Mozart.",
+            "👁️ Computer vision AI can identify objects in images with over 99% accuracy in some cases.",
+            "🌍 Machine translation AI supports over 100 languages and billions of translations daily.",
+            "🎯 Recommendation systems drive 35% of Amazon's revenue and 75% of Netflix viewing.",
+            "🚗 Self-driving cars process over 1GB of data per second from sensors and cameras.",
+            "🎮 AI has mastered complex games like Go, Poker, and Starcraft II, often using novel strategies.",
+            "📱 Voice assistants can understand context and maintain conversations across multiple turns.",
+            "🔬 AI is accelerating drug discovery, reducing development time from 10+ years to 2-3 years.",
+            "📊 GPT-3 has 175 billion parameters, while GPT-4 is rumored to have over 1 trillion!",
+            "🎨 DALL-E can create images from text descriptions that have never existed before.",
+            "🏥 AI can detect diseases in medical scans often more accurately than human radiologists."
+        ]
+        
+        # Jokes database
+        self.jokes = [
+            "Why did the neural network break up with the decision tree? It said their relationship wasn't deep enough! 🤖💔",
+            "What's the difference between a data scientist and a statistician? About 30k in salary! 💰📊",
+            "Why don't robots ever panic? Because they have nerves of steel and algorithms of gold! 🤖✨",
+            "How many AI researchers does it take to change a light bulb? Just one, but they'll need 1000 examples of working light bulbs first! 💡🔄",
+            "Why did the programmer quit his job? He didn't get arrays! (a raise) 👨‍💻💸",
+            "What do you call a group of disorganized cat photos? A furry dataset that needs cleaning! 🐱📊",
+            "Why was the machine learning model always calm? Because it had learned to regularize its emotions! 😌🧠",
+            "What's an AI's favorite type of music? Algo-rhythms! 🎵🤖",
+            "Why don't AIs ever get lost? They always know their way through the network! 🗺️🔗",
+            "What did the overfitted model say to the validation set? 'I've never seen you before in my life!' 📈❌",
+            "Why did the chatbot go to therapy? It had too many layers of complexity! 🛋️🤖",
+            "What's the difference between AI and a magic trick? With AI, we still don't know how it works! ✨🎩",
+            "Why don't robots tell jokes? They have trouble with human parsing! 😄🤖",
+            "What do you call an AI that loves gardening? A plant-based neural network! 🌱🧠"
+        ]
+        
         # Quiz questions database
         self.quiz_questions = [
             {
