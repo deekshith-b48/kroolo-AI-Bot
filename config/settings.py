@@ -20,8 +20,8 @@ class Settings(BaseSettings):
     
     # Telegram Configuration
     telegram_bot_token: str = Field(..., env="TELEGRAM_BOT_TOKEN")
-    telegram_webhook_url: str = Field(..., env="TELEGRAM_WEBHOOK_URL")
-    telegram_webhook_secret: str = Field(..., env="TELEGRAM_WEBHOOK_SECRET")
+    telegram_webhook_url: Optional[str] = Field(None, env="TELEGRAM_WEBHOOK_URL")
+    telegram_webhook_secret: Optional[str] = Field(None, env="TELEGRAM_WEBHOOK_SECRET")
     
     # Secondary Bot Tokens (Optional)
     telegram_news_bot_token: Optional[str] = Field(None, env="TELEGRAM_NEWS_BOT_TOKEN")
@@ -30,18 +30,18 @@ class Settings(BaseSettings):
     telegram_mod_bot_token: Optional[str] = Field(None, env="TELEGRAM_MOD_BOT_TOKEN")
     
     # OpenAI Configuration
-    openai_api_key: str = Field(..., env="OPENAI_API_KEY")
+    openai_api_key: Optional[str] = Field(None, env="OPENAI_API_KEY")
     openai_model: str = Field(default="gpt-4", env="OPENAI_MODEL")
     openai_max_tokens: int = Field(default=2000, env="OPENAI_MAX_TOKENS")
     openai_temperature: float = Field(default=0.7, env="OPENAI_TEMPERATURE")
     
     # Database Configuration
-    database_url: str = Field(..., env="DATABASE_URL")
-    redis_url: str = Field(..., env="REDIS_URL")
+    database_url: str = Field(default="sqlite:///./kroolo_bot.db", env="DATABASE_URL")
+    redis_url: str = Field(default="redis://localhost:6379/0", env="REDIS_URL")
     mongodb_url: Optional[str] = Field(None, env="MONGODB_URL")
     
     # Vector Database
-    qdrant_url: str = Field(..., env="QDRANT_URL")
+    qdrant_url: Optional[str] = Field(None, env="QDRANT_URL")
     qdrant_api_key: Optional[str] = Field(None, env="QDRANT_API_KEY")
     vector_dimension: int = Field(default=768, env="VECTOR_DIMENSION")
     
