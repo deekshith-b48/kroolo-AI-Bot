@@ -62,23 +62,31 @@ class AuthService:
             return user.get("role", "user")
         return "user"
     
-    def can_perform_action(self, user_id: int, action: str, target_role: str = None) -> bool:
-        """Check if user can perform specific action"""
+    def can_perform_action(self, user_id: int, action: str, target_role: str = None, target_user_id: int = None) -> bool:
+        """Check if user can perform specific action with enhanced security"""
         user_role = self.get_user_role(user_id)
         user_level = self.role_hierarchy.get(user_role, 0)
         
-        # Action-based permissions
+        # Prevent users from acting on themselves for certain actions
+        if target_user_id and target_user_id == user_id and action in ["ban", "demote"]:
+            return False
+        
+        # Enhanced action-based permissions
         action_permissions = {
-            "promote": {"min_role": "moderator", "target_max_role": "moderator"},
-            "demote": {"min_role": "moderator", "target_max_role": "moderator"},
-            "ban": {"min_role": "moderator", "target_max_role": "user"},
-            "unban": {"min_role": "moderator", "target_max_role": "user"},
-            "settings": {"min_role": "moderator"},
-            "approve": {"min_role": "moderator"},
-            "reject": {"min_role": "moderator"},
-            "backup": {"min_role": "admin"},
-            "restore": {"min_role": "admin"},
-            "system": {"min_role": "superadmin"}
+            "promote": {"min_role": "admin", "target_max_role": "moderator", "description": "Promote users"},
+            "demote": {"min_role": "admin", "target_max_role": "moderator", "description": "Demote users"},
+            "ban": {"min_role": "moderator", "target_max_role": "user", "description": "Ban users"},
+            "unban": {"min_role": "moderator", "target_max_role": "user", "description": "Unban users"},
+            "settings": {"min_role": "moderator", "description": "Modify bot settings"},
+            "approve": {"min_role": "moderator", "description": "Approve content"},
+            "reject": {"min_role": "moderator", "description": "Reject content"},
+            "backup": {"min_role": "admin", "description": "Create database backups"},
+            "restore": {"min_role": "admin", "description": "Restore database"},
+            "system": {"min_role": "superadmin", "description": "System administration"},
+            "users": {"min_role": "admin", "description": "View user list"},
+            "logs": {"min_role": "admin", "description": "View system logs"},
+            "status": {"min_role": "moderator", "description": "View bot status"},
+            "admin_help": {"min_role": "moderator", "description": "View admin commands"}
         }
         
         if action not in action_permissions:
@@ -98,6 +106,43 @@ class AuthService:
                 return False
         
         return True
+    
+    def get_available_actions(self, user_id: int) -> List[str]:
+        """Get list of actions available to user"""
+        user_role = self.get_user_role(user_id)
+        user_level = self.role_hierarchy.get(user_role, 0)
+        
+        available_actions = []
+        action_permissions = {
+            "promote": {"min_role": "admin", "description": "Promote users"},
+            "demote": {"min_role": "admin", "description": "Demote users"},
+            "ban": {"min_role": "moderator", "description": "Ban users"},
+            "unban": {"min_role": "moderator", "description": "Unban users"},
+            "settings": {"min_role": "moderator", "description": "Modify bot settings"},
+            "backup": {"min_role": "admin", "description": "Create database backups"},
+            "restore": {"min_role": "admin", "description": "Restore database"},
+            "system": {"min_role": "superadmin", "description": "System administration"},
+            "users": {"min_role": "admin", "description": "View user list"},
+            "logs": {"min_role": "admin", "description": "View system logs"},
+            "status": {"min_role": "moderator", "description": "View bot status"},
+            "admin_help": {"min_role": "moderator", "description": "View admin commands"}
+        }
+        
+        for action, permission in action_permissions.items():
+            min_level = self.role_hierarchy.get(permission["min_role"], 0)
+            if user_level >= min_level:
+                available_actions.append(f"• `/{action}` - {permission['description']}")
+        
+        return available_actions
+    
+    def is_group_admin(self, user_id: int, chat_id: int, context) -> bool:
+        """Check if user is admin in the specific Telegram group"""
+        try:
+            # This would require checking with Telegram API
+            # For now, we'll use our internal role system
+            return self.is_admin(user_id) or self.is_moderator(user_id)
+        except Exception:
+            return False
     
     def promote_user(self, admin_id: int, target_username: str, new_role: str = "moderator") -> Dict[str, Any]:
         """Promote user to new role"""

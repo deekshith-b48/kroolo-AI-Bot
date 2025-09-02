@@ -1,6 +1,6 @@
 """
 Inline query handler for Kroolo Agent Bot
-Handles @krooloAgentBot <query> inline queries
+Provides helpful inline suggestions and directs users to use /ask command
 """
 
 import logging
@@ -24,7 +24,6 @@ class InlineQueryHandler:
         """Handle inline queries from users"""
         query = update.inline_query.query.strip()
         user = update.inline_query.from_user
-        chat_id = update.inline_query.chat_type if hasattr(update.inline_query, 'chat_type') else 'private'
         
         # Log the inline query
         if user:
@@ -60,159 +59,102 @@ class InlineQueryHandler:
             await update.inline_query.answer([fallback_result], cache_time=1)
     
     async def _generate_inline_results(self, query: str, user) -> List[InlineQueryResultArticle]:
-        """Generate inline query results"""
+        """Generate inline query results optimized for groups and topic threads"""
         results = []
         
         # Generate unique ID for this query
         query_hash = hashlib.md5(f"{user.id}:{query}".encode()).hexdigest()[:8]
         
-        # Main AI response result
-        try:
-            # For inline queries, we'll provide a quick response without calling AI
-            # This prevents abuse and ensures fast response times
-            ai_result = InlineQueryResultArticle(
-                id=f"ai_{query_hash}",
-                title=f"🤖 AI Response: {query[:50]}{'...' if len(query) > 50 else ''}",
-                description="Get AI-powered answer to your question",
-                input_message_content=InputTextMessageContent(
-                    f"🔍 **Query:** {query}\n\n"
-                    f"💡 **AI Response:**\n"
-                    f"Use `/ask {query}` for a detailed AI response.\n\n"
-                    f"*Inline queries provide quick previews. Use /ask for full responses.*",
-                    parse_mode=ParseMode.MARKDOWN
-                ),
-                thumb_url="https://img.icons8.com/color/48/000000/robot.png"
-            )
-            results.append(ai_result)
-            
-        except Exception as e:
-            logger.error(f"Error generating AI result: {e}")
+        # Main AI response result - optimized for groups
+        ask_result = InlineQueryResultArticle(
+            id=f"ask_{query_hash}",
+            title=f"🤖 Ask AI: {query[:50]}{'...' if len(query) > 50 else ''}",
+            description="Get AI response directly in chat",
+            input_message_content=InputTextMessageContent(
+                f"🤖 **AI Response to:** {query}\n\n_Processing your question..._\n\n/ask {query}",
+                parse_mode=ParseMode.MARKDOWN
+            ),
+            thumb_url="https://img.icons8.com/color/48/000000/robot.png"
+        )
+        results.append(ask_result)
         
-        # Quick action results
-        quick_actions = [
+        # Quick AI summary for groups
+        summary_result = InlineQueryResultArticle(
+            id=f"summary_{query_hash}",
+            title=f"📋 Quick Summary: {query[:40]}{'...' if len(query) > 40 else ''}",
+            description="Get a brief AI summary for group discussion",
+            input_message_content=InputTextMessageContent(
+                f"📋 **Quick Summary Request:** {query}\n\n/ask summarize: {query}",
+                parse_mode=ParseMode.MARKDOWN
+            ),
+            thumb_url="https://img.icons8.com/color/48/000000/summary.png"
+        )
+        results.append(summary_result)
+        
+        # Topic management for groups
+        topic_result = InlineQueryResultArticle(
+            id=f"topic_{query_hash}",
+            title=f"🎯 Set Topic: {query[:40]}{'...' if len(query) > 40 else ''}",
+            description="Set as community discussion topic",
+            input_message_content=InputTextMessageContent(
+                f"🎯 **New Topic Set:** {query}\n\n/topic {query}",
+                parse_mode=ParseMode.MARKDOWN
+            ),
+            thumb_url="https://img.icons8.com/color/48/000000/topic.png"
+        )
+        results.append(topic_result)
+        
+        # Community engagement options
+        engagement_actions = [
             {
-                "id": f"ask_{query_hash}",
-                "title": f"📝 Ask AI: {query[:40]}{'...' if len(query) > 40 else ''}",
-                "description": "Send as /ask command",
-                "text": f"/ask {query}",
-                "thumb_url": "https://img.icons8.com/color/48/000000/chat.png"
+                "id": f"news_{query_hash}",
+                "title": f"📰 News about: {query[:35]}{'...' if len(query) > 35 else ''}",
+                "description": "Get latest news on this topic",
+                "text": f"📰 **Latest News:** {query}\n\n/news {query}",
+                "thumb_url": "https://img.icons8.com/color/48/000000/news.png"
             },
             {
-                "id": f"topic_{query_hash}",
-                "title": f"🎯 Set Topic: {query[:40]}{'...' if len(query) > 40 else ''}",
-                "description": "Set as community topic",
-                "text": f"/topic {query}",
-                "thumb_url": "https://img.icons8.com/color/48/000000/topic.png"
+                "id": f"quiz_{query_hash}",
+                "title": f"🧩 Quiz about: {query[:35]}{'...' if len(query) > 35 else ''}",
+                "description": "Create a quiz for group engagement",
+                "text": f"🧩 **Quiz Time:** {query}\n\n/quiz {query}",
+                "thumb_url": "https://img.icons8.com/color/48/000000/quiz.png"
+            },
+            {
+                "id": f"fact_{query_hash}",
+                "title": f"💡 Fun Fact: {query[:35]}{'...' if len(query) > 35 else ''}",
+                "description": "Share an interesting fact",
+                "text": f"💡 **Fun Fact about:** {query}\n\n/funfact {query}",
+                "thumb_url": "https://img.icons8.com/color/48/000000/idea.png"
             }
         ]
         
-        for action in quick_actions:
+        # Add engagement actions to results
+        for action in engagement_actions:
             result = InlineQueryResultArticle(
                 id=action["id"],
                 title=action["title"],
                 description=action["description"],
-                input_message_content=InputTextMessageContent(action["text"]),
+                input_message_content=InputTextMessageContent(
+                    action["text"],
+                    parse_mode=ParseMode.MARKDOWN
+                ),
                 thumb_url=action["thumb_url"]
             )
             results.append(result)
         
-        # Add contextual suggestions based on query type
-        contextual_results = await self._generate_contextual_results(query, query_hash)
-        results.extend(contextual_results)
-        
-        return results
-    
-    async def _generate_contextual_results(self, query: str, query_hash: str) -> List[InlineQueryResultArticle]:
-        """Generate contextual results based on query content"""
-        results = []
-        
-        # Detect query type and provide relevant suggestions
-        query_lower = query.lower()
-        
-        # Technical/Programming queries
-        if any(word in query_lower for word in ["code", "programming", "python", "javascript", "api", "bug", "error"]):
-            results.append(InlineQueryResultArticle(
-                id=f"tech_{query_hash}",
-                title="💻 Technical Support",
-                description="Get programming help and code examples",
-                input_message_content=InputTextMessageContent(
-                    f"🔧 **Technical Query:** {query}\n\n"
-                    f"I can help with:\n"
-                    f"• Code review and debugging\n"
-                    f"• API documentation\n"
-                    f"• Best practices\n\n"
-                    f"Use `/ask {query}` for detailed technical assistance."
-                ),
-                thumb_url="https://img.icons8.com/color/48/000000/code.png"
-            ))
-        
-        # Business/Analytics queries
-        elif any(word in query_lower for word in ["business", "analytics", "data", "report", "sales", "marketing", "strategy"]):
-            results.append(InlineQueryResultArticle(
-                id=f"business_{query_hash}",
-                title="📊 Business Insights",
-                description="Get business analysis and insights",
-                input_message_content=InputTextMessageContent(
-                    f"📈 **Business Query:** {query}\n\n"
-                    f"I can help with:\n"
-                    f"• Market analysis\n"
-                    f"• Data interpretation\n"
-                    f"• Strategy recommendations\n\n"
-                    f"Use `/ask {query}` for comprehensive business insights."
-                ),
-                thumb_url="https://img.icons8.com/color/48/000000/business.png"
-            ))
-        
-        # Creative/Content queries
-        elif any(word in query_lower for word in ["write", "content", "creative", "story", "article", "blog", "social"]):
-            results.append(InlineQueryResultArticle(
-                id=f"creative_{query_hash}",
-                title="✍️ Content Creation",
-                description="Get creative writing help and ideas",
-                input_message_content=InputTextMessageContent(
-                    f"🎨 **Creative Query:** {query}\n\n"
-                    f"I can help with:\n"
-                    f"• Content ideas and outlines\n"
-                    f"• Writing assistance\n"
-                    f"• Creative brainstorming\n\n"
-                    f"Use `/ask {query}` for detailed creative support."
-                ),
-                thumb_url="https://img.icons8.com/color/48/000000/creative.png"
-            ))
-        
-        # Learning/Education queries
-        elif any(word in query_lower for word in ["learn", "study", "education", "tutorial", "explain", "how to", "what is"]):
-            results.append(InlineQueryResultArticle(
-                id=f"learn_{query_hash}",
-                title="📚 Learning Assistant",
-                description="Get educational explanations and tutorials",
-                input_message_content=InputTextMessageContent(
-                    f"🎓 **Learning Query:** {query}\n\n"
-                    f"I can help with:\n"
-                    f"• Concept explanations\n"
-                    f"• Step-by-step tutorials\n"
-                    f"• Learning resources\n\n"
-                    f"Use `/ask {query}` for comprehensive learning support."
-                ),
-                thumb_url="https://img.icons8.com/color/48/000000/graduation-cap.png"
-            ))
-        
-        # General knowledge queries
-        else:
-            results.append(InlineQueryResultArticle(
-                id=f"general_{query_hash}",
-                title="🌐 General Knowledge",
-                description="Get information and answers",
-                input_message_content=InputTextMessageContent(
-                    f"🔍 **Query:** {query}\n\n"
-                    f"I can help with:\n"
-                    f"• Information and facts\n"
-                    f"• Problem solving\n"
-                    f"• Research assistance\n\n"
-                    f"Use `/ask {query}` for detailed answers."
-                ),
-                thumb_url="https://img.icons8.com/color/48/000000/search.png"
-            ))
+        # Help option
+        help_result = InlineQueryResultArticle(
+            id=f"help_{query_hash}",
+            title="❓ Get Help & Commands",
+            description="Show all available bot commands",
+            input_message_content=InputTextMessageContent(
+                "❓ **Getting Help**\n\nUse /help to see all available commands and features.",
+                parse_mode=ParseMode.MARKDOWN
+            ),
+            thumb_url="https://img.icons8.com/color/48/000000/help.png"
+        )
+        results.append(help_result)
         
         return results
     
@@ -221,21 +163,19 @@ class InlineQueryHandler:
         help_results = [
             InlineQueryResultArticle(
                 id="help_1",
-                title="🤖 How to use @krooloAgentBot",
-                description="Learn how to use inline queries",
+                title="🤖 How to use Kroolo Agent Bot",
+                description="Learn how to use the bot commands",
                 input_message_content=InputTextMessageContent(
-                    "**How to use @krooloAgentBot inline queries:**\n\n"
-                    "1. Type `@krooloAgentBot` followed by your question\n"
-                    "2. Select from the suggested results\n"
-                    "3. Choose to send as message or use quick commands\n\n"
-                    "**Examples:**\n"
-                    "• `@krooloAgentBot explain AI`\n"
-                    "• `@krooloAgentBot python tutorial`\n"
-                    "• `@krooloAgentBot business strategy`\n\n"
+                    "**How to use Kroolo Agent Bot:**\n\n"
                     "**Commands:**\n"
-                    "• `/ask <question>` - Get detailed AI response\n"
-                    "• `/topic <name>` - Set community topic\n"
-                    "• `/help` - See all available commands"
+                    "• `/start` - Start the bot\n"
+                    "• `/help` - Show help\n"
+                    "• `/ask <question>` - Ask AI\n"
+                    "• `/topic <name>` - Set topic\n"
+                    "• `/status` - Bot status (admin)\n"
+                    "• `/admin_help` - Admin commands\n\n"
+                    "**Inline Usage:**\n"
+                    "Type your question to get quick suggestions and use `/ask` for full responses."
                 ),
                 thumb_url="https://img.icons8.com/color/48/000000/help.png"
             ),

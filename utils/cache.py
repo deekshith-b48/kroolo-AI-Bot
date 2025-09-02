@@ -8,7 +8,6 @@ import logging
 import time
 from typing import Optional, Any, Dict
 import redis
-import aioredis
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +15,6 @@ class RedisCache:
     def __init__(self, redis_url: str):
         self.redis_url = redis_url
         self.redis_client = None
-        self.aioredis_client = None
         self._init_redis()
     
     def _init_redis(self):
@@ -29,15 +27,7 @@ class RedisCache:
             logger.error(f"Failed to connect to Redis: {e}")
             self.redis_client = None
     
-    async def _init_aioredis(self):
-        """Initialize async Redis connection"""
-        try:
-            self.aioredis_client = aioredis.from_url(self.redis_url, decode_responses=True)
-            await self.aioredis_client.ping()
-            logger.info("Async Redis connection established successfully")
-        except Exception as e:
-            logger.error(f"Failed to connect to async Redis: {e}")
-            self.aioredis_client = None
+
     
     def get(self, key: str) -> Optional[Any]:
         """Get value from cache"""

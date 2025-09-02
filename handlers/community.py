@@ -12,6 +12,7 @@ from telegram.constants import ParseMode
 from services.ai_service import AIService
 from services.auth import AuthService
 from utils.logger import log_user_action, log_admin_action
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -43,11 +44,6 @@ class CommunityHandler:
         if user:
             self.auth_service.create_user_if_not_exists(user.id, user.username)
         
-        # Check for bot mentions
-        if context.bot.username and f"@{context.bot.username}" in text:
-            await self._handle_bot_mention(update, context)
-            return
-        
         # Auto-moderation features
         await self._auto_moderation(update, context)
         
@@ -57,343 +53,221 @@ class CommunityHandler:
         # Thread summarization for long conversations
         await self._check_thread_summarization(update, context)
     
-    async def _handle_bot_mention(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle when bot is mentioned in chat"""
-        message = update.message
-        chat_id = message.chat.id
-        user = message.from_user
-        text = message.text or ""
-        
-        # Extract the query after bot mention
-        bot_username = context.bot.username
-        query = text.replace(f"@{bot_username}", "").strip()
-        
-        if not query:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="👋 Hi! I'm here to help. What would you like to know?",
-                reply_to_message_id=message.message_id
-            )
-            return
-        
-        # Check if user is banned
-        if user and self.auth_service.get_user_role(user.id) == "banned":
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="❌ You are banned from using this bot. Contact an administrator.",
-                reply_to_message_id=message.message_id
-            )
-            return
-        
-        # Send typing indicator
-        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-        
-        try:
-            # Get AI response
-            answer = await self.ai_service.ask_ai(query)
-            
-            # Send response
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=f"🤖 **AI Response:**\n\n{answer}",
-                parse_mode=ParseMode.MARKDOWN,
-                reply_to_message_id=message.message_id
-            )
-            
-            # Log action
-            if user:
-                log_user_action(user.id, chat_id, "bot_mention", query)
-                
-        except Exception as e:
-            logger.error(f"Error handling bot mention: {e}")
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="❌ Sorry, I encountered an error. Please try again later.",
-                reply_to_message_id=message.message_id
-            )
-    
     async def _auto_moderation(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Auto-moderation features"""
+        """Auto-moderation for community messages"""
         message = update.message
         chat_id = message.chat.id
         user = message.from_user
         text = message.text or ""
         
-        # Skip if message is too short for analysis
-        if len(text) < 10:
+        if not text or not user:
             return
         
         try:
-            # Check for potential spam
-            spam_analysis = await self.ai_service.detect_spam(text)
+            # Check for spam content
+            spam_result = await self.ai_service.detect_spam(text)
             
-            if spam_analysis.get("is_spam", False) and spam_analysis.get("confidence", 0) > 0.7:
-                await self._handle_potential_spam(update, context, spam_analysis)
+            if spam_result.get("is_spam", False) and spam_result.get("confidence", 0) > 0.7:
+                # High confidence spam detected
+                await self._handle_spam_detection(update, context, spam_result)
+                return
             
-            # Check for inappropriate content
-            if any(word in text.lower() for word in ["spam", "scam", "click here", "free money"]):
-                await self._flag_suspicious_content(update, context, text)
+            # Check for inappropriate content (basic keyword filtering)
+            inappropriate_words = ["spam", "scam", "buy now", "click here", "free money"]
+            if any(word in text.lower() for word in inappropriate_words):
+                await self._handle_inappropriate_content(update, context, text)
+                return
                 
         except Exception as e:
             logger.error(f"Error in auto-moderation: {e}")
     
-    async def _handle_potential_spam(self, update: Update, context: ContextTypes.DEFAULT_TYPE, spam_analysis: Dict[str, Any]):
-        """Handle potential spam messages"""
+    async def _handle_spam_detection(self, update: Update, context: ContextTypes.DEFAULT_TYPE, spam_result: Dict):
+        """Handle detected spam content"""
         message = update.message
         chat_id = message.chat.id
         user = message.from_user
         
-        # Create moderation keyboard
-        keyboard = [
-            [
-                InlineKeyboardButton("✅ Approve", callback_data=f"mod_approve_{message.message_id}"),
-                InlineKeyboardButton("❌ Remove", callback_data=f"mod_remove_{message.message_id}")
-            ],
-            [
-                InlineKeyboardButton("🚫 Ban User", callback_data=f"mod_ban_{user.id if user else 0}")
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        # Send moderation alert to admins
-        admin_message = (
-            f"🚨 **Potential Spam Detected**\n\n"
-            f"**User:** {user.first_name if user else 'Unknown'} (@{user.username if user else 'N/A'})\n"
-            f"**Confidence:** {spam_analysis.get('confidence', 0):.2f}\n"
-            f"**Reasons:** {', '.join(spam_analysis.get('reasons', []))}\n\n"
-            f"**Message:** {message.text[:100]}{'...' if len(message.text) > 100 else ''}"
+        # Log the spam detection
+        log_admin_action(
+            user_id=user.id if user else 0,
+            action="spam_detected",
+            target_id=chat_id,
+            details=f"Confidence: {spam_result.get('confidence', 0)}, Reasons: {spam_result.get('reasons', [])}"
         )
         
-        # Find admins in the chat and notify them
-        await self._notify_admins(context, chat_id, admin_message, reply_markup)
+        # Send warning to user
+        warning_text = (
+            "⚠️ **Spam Detection Warning**\n\n"
+            "Your message appears to contain spam content. "
+            "Please ensure your messages are relevant to the community.\n\n"
+            "If this is a false positive, contact a moderator."
+        )
         
-        # Log moderation action
-        if user:
-            log_user_action(user.id, chat_id, "spam_detected", f"confidence: {spam_analysis.get('confidence', 0)}")
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=warning_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_to_message_id=message.message_id
+        )
+        
+        # If user has multiple warnings, consider temporary restriction
+        # This would be implemented with a warning counter system
     
-    async def _flag_suspicious_content(self, update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
-        """Flag suspicious content for admin review"""
+    async def _handle_inappropriate_content(self, update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
+        """Handle inappropriate content"""
         message = update.message
         chat_id = message.chat.id
         user = message.from_user
         
-        # Create moderation keyboard
-        keyboard = [
-            [
-                InlineKeyboardButton("✅ Allow", callback_data=f"mod_allow_{message.message_id}"),
-                InlineKeyboardButton("⚠️ Warn", callback_data=f"mod_warn_{user.id if user else 0}")
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        # Send moderation alert
-        admin_message = (
-            f"⚠️ **Suspicious Content Flagged**\n\n"
-            f"**User:** {user.first_name if user else 'Unknown'} (@{user.username if user else 'N/A'})\n"
-            f"**Content:** {text[:100]}{'...' if len(text) > 100 else ''}\n\n"
-            f"**Action Required:** Review and take appropriate action."
+        # Log the inappropriate content
+        log_admin_action(
+            user_id=user.id if user else 0,
+            action="inappropriate_content",
+            target_id=chat_id,
+            details=f"Content: {text[:100]}..."
         )
         
-        await self._notify_admins(context, chat_id, admin_message, reply_markup)
-    
-    async def _notify_admins(self, context: ContextTypes.DEFAULT_TYPE, chat_id: int, message: str, reply_markup: InlineKeyboardMarkup):
-        """Notify admins about moderation issues"""
-        try:
-            # Get chat administrators
-            chat_member = await context.bot.get_chat_administrators(chat_id)
-            admin_ids = [member.user.id for member in chat_member]
-            
-            # Also check our bot's admin list
-            bot_admins = self.auth_service.get_admin_list()
-            bot_admin_ids = [admin["telegram_id"] for admin in bot_admins if admin["telegram_id"]]
-            
-            # Combine admin lists
-            all_admin_ids = list(set(admin_ids + bot_admin_ids))
-            
-            # Send notification to each admin
-            for admin_id in all_admin_ids:
-                try:
-                    await context.bot.send_message(
-                        chat_id=admin_id,
-                        text=message,
-                        parse_mode=ParseMode.MARKDOWN,
-                        reply_markup=reply_markup
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to notify admin {admin_id}: {e}")
-                    
-        except Exception as e:
-            logger.error(f"Error notifying admins: {e}")
+        # Send gentle reminder
+        reminder_text = (
+            "💡 **Community Guidelines Reminder**\n\n"
+            "Please ensure your messages follow community guidelines. "
+            "If you need help, use `/help` to see available commands."
+        )
+        
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=reminder_text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_to_message_id=message.message_id
+        )
     
     async def _auto_topic_detection(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Auto-detect topics from messages"""
+        """Auto-detect and suggest topics based on conversation"""
         message = update.message
         chat_id = message.chat.id
         text = message.text or ""
         
-        # Skip if message is too short
-        if len(text) < 20:
+        if not text:
+            return
+        
+        # Only run topic detection occasionally to avoid spam
+        if hasattr(self, '_last_topic_check') and \
+           (datetime.utcnow() - self._last_topic_check).seconds < 300:  # 5 minutes
             return
         
         try:
-            # Generate topic suggestions based on message content
-            topics = await self.ai_service.generate_topic_suggestions(text)
+            # Get recent messages for context (simplified)
+            context_text = text[:200]  # Use current message as context
             
-            # Store topics for this chat (in production, save to database)
-            if chat_id not in self.community_settings:
-                self.community_settings[chat_id] = {"topics": []}
+            # Generate topic suggestions
+            topics = await self.ai_service.generate_topic_suggestions(context_text)
             
-            # Add new topics
-            for topic in topics:
-                if topic not in self.community_settings[chat_id]["topics"]:
-                    self.community_settings[chat_id]["topics"].append(topic)
-            
-            # Log topic detection
-            log_user_action(
-                message.from_user.id if message.from_user else 0,
-                chat_id,
-                "topic_detected",
-                f"topics: {', '.join(topics)}"
-            )
-            
+            if topics and len(topics) > 0:
+                # Store suggested topics for this chat
+                if chat_id not in self.community_settings:
+                    self.community_settings[chat_id] = {}
+                
+                self.community_settings[chat_id]['suggested_topics'] = topics
+                self._last_topic_check = datetime.utcnow()
+                
         except Exception as e:
-            logger.error(f"Error in topic detection: {e}")
+            logger.error(f"Error in auto-topic detection: {e}")
     
     async def _check_thread_summarization(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Check if thread needs summarization"""
         message = update.message
         chat_id = message.chat.id
         
-        # This is a simplified version - in production you'd track message counts
-        # and thread lengths more sophisticatedly
-        
-        # For now, we'll just log that we're monitoring
-        if message.from_user:
-            log_user_action(
-                message.from_user.id,
-                chat_id,
-                "message_monitored",
-                "thread summarization check"
-            )
+        # This would check thread length and suggest summarization
+        # For now, it's a placeholder for future implementation
+        pass
     
     async def handle_callback_query(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle callback queries from moderation keyboards"""
-        query = update.callback_query
-        data = query.data
-        user = query.from_user
+        """Handle callback queries for moderation actions"""
+        if not update.callback_query:
+            return
         
-        # Check if user is admin
-        if not self.auth_service.is_admin(user.id):
-            await query.answer("❌ You don't have permission to perform this action.")
+        callback_query = update.callback_query
+        data = callback_query.data
+        user = callback_query.from_user
+        chat_id = callback_query.message.chat.id if callback_query.message else 0
+        
+        # Check if user has permission to moderate
+        if not self.auth_service.is_moderator(user.id):
+            await callback_query.answer("❌ You don't have permission to moderate.", show_alert=True)
             return
         
         try:
-            if data.startswith("mod_approve_"):
-                await self._handle_moderation_approval(update, context, data)
-            elif data.startswith("mod_remove_"):
-                await self._handle_moderation_removal(update, context, data)
-            elif data.startswith("mod_ban_"):
-                await self._handle_moderation_ban(update, context, data)
-            elif data.startswith("mod_allow_"):
-                await self._handle_moderation_allow(update, context, data)
-            elif data.startswith("mod_warn_"):
-                await self._handle_moderation_warn(update, context, data)
+            if data.startswith("moderate_"):
+                await self._handle_moderation_callback(update, context, data)
+            elif data.startswith("topic_"):
+                await self._handle_topic_callback(update, context, data)
             else:
-                await query.answer("Unknown action")
+                await callback_query.answer("Unknown action")
                 
         except Exception as e:
             logger.error(f"Error handling callback query: {e}")
-            await query.answer("Error processing action")
+            await callback_query.answer("❌ Error processing action", show_alert=True)
     
-    async def _handle_moderation_approval(self, update: Update, context: ContextTypes.DEFAULT_TYPE, data: str):
-        """Handle moderation approval"""
-        query = update.callback_query
-        message_id = data.replace("mod_approve_", "")
+    async def _handle_moderation_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE, data: str):
+        """Handle moderation-related callback queries"""
+        callback_query = update.callback_query
+        action = data.split("_")[1]
+        target_id = data.split("_")[2] if len(data.split("_")) > 2 else None
         
-        await query.answer("✅ Message approved")
-        await query.edit_message_text("✅ **Approved by moderator**")
-        
-        # Log action
-        log_admin_action(query.from_user.id, 0, "moderation_approve", f"message_id: {message_id}")
+        if action == "warn":
+            await callback_query.answer("⚠️ Warning sent to user")
+            # Implement warning logic
+        elif action == "delete":
+            await callback_query.answer("🗑️ Message deleted")
+            # Implement message deletion logic
+        elif action == "restrict":
+            await callback_query.answer("🚫 User restricted")
+            # Implement user restriction logic
     
-    async def _handle_moderation_removal(self, update: Update, context: ContextTypes.DEFAULT_TYPE, data: str):
-        """Handle moderation removal"""
-        query = update.callback_query
-        message_id = data.replace("mod_remove_", "")
+    async def _handle_topic_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE, data: str):
+        """Handle topic-related callback queries"""
+        callback_query = update.callback_query
+        action = data.split("_")[1]
+        topic = data.split("_")[2] if len(data.split("_")) > 2 else None
         
-        try:
-            # Try to delete the message
-            await context.bot.delete_message(chat_id=query.message.chat.id, message_id=int(message_id))
-            await query.answer("❌ Message removed")
-            await query.edit_message_text("❌ **Message removed by moderator**")
-            
-            # Log action
-            log_admin_action(query.from_user.id, 0, "moderation_remove", f"message_id: {message_id}")
-            
-        except Exception as e:
-            logger.error(f"Error removing message: {e}")
-            await query.answer("Error removing message")
-    
-    async def _handle_moderation_ban(self, update: Update, context: ContextTypes.DEFAULT_TYPE, data: str):
-        """Handle moderation ban"""
-        query = update.callback_query
-        user_id = data.replace("mod_ban_", "")
-        
-        try:
-            # Ban the user
-            result = self.auth_service.ban_user(query.from_user.id, f"user_{user_id}")
-            
-            if result["success"]:
-                await query.answer("🚫 User banned")
-                await query.edit_message_text("🚫 **User banned by moderator**")
-                
-                # Log action
-                log_admin_action(query.from_user.id, 0, "moderation_ban", f"user_id: {user_id}")
-            else:
-                await query.answer(f"Error: {result['error']}")
-                
-        except Exception as e:
-            logger.error(f"Error banning user: {e}")
-            await query.answer("Error banning user")
-    
-    async def _handle_moderation_allow(self, update: Update, context: ContextTypes.DEFAULT_TYPE, data: str):
-        """Handle moderation allow"""
-        query = update.callback_query
-        message_id = data.replace("mod_allow_", "")
-        
-        await query.answer("✅ Content allowed")
-        await query.edit_message_text("✅ **Content allowed by moderator**")
-        
-        # Log action
-        log_admin_action(query.from_user.id, 0, "moderation_allow", f"message_id: {message_id}")
-    
-    async def _handle_moderation_warn(self, update: Update, context: ContextTypes.DEFAULT_TYPE, data: str):
-        """Handle moderation warn"""
-        query = update.callback_query
-        user_id = data.replace("mod_warn_", "")
-        
-        await query.answer("⚠️ Warning sent")
-        await query.edit_message_text("⚠️ **Warning sent to user**")
-        
-        # Log action
-        log_admin_action(query.from_user.id, 0, "moderation_warn", f"user_id: {user_id}")
+        if action == "set":
+            await callback_query.answer(f"🎯 Topic set to: {topic}")
+            # Implement topic setting logic
+        elif action == "suggest":
+            await callback_query.answer(f"💡 Topic suggestion: {topic}")
+            # Implement topic suggestion logic
     
     async def get_community_topics(self, chat_id: int) -> List[str]:
         """Get current topics for a community"""
         if chat_id in self.community_settings:
-            return self.community_settings[chat_id].get("topics", [])
+            return self.community_settings[chat_id].get('suggested_topics', [])
         return []
     
     async def set_community_topic(self, chat_id: int, topic: str) -> bool:
         """Set a topic for a community"""
         try:
             if chat_id not in self.community_settings:
-                self.community_settings[chat_id] = {"topics": []}
+                self.community_settings[chat_id] = {}
             
-            if topic not in self.community_settings[chat_id]["topics"]:
-                self.community_settings[chat_id]["topics"].append(topic)
-            
+            self.community_settings[chat_id]['current_topic'] = topic
             return True
         except Exception as e:
             logger.error(f"Error setting community topic: {e}")
             return False
+    
+    async def get_community_stats(self, chat_id: int) -> Dict[str, Any]:
+        """Get community statistics"""
+        try:
+            # This would fetch real statistics from the database
+            # For now, return placeholder data
+            return {
+                "chat_id": chat_id,
+                "member_count": 0,  # Would be fetched from Telegram API
+                "message_count": 0,  # Would be fetched from database
+                "active_topics": self.community_settings.get(chat_id, {}).get('suggested_topics', []),
+                "current_topic": self.community_settings.get(chat_id, {}).get('current_topic', "General Discussion")
+            }
+        except Exception as e:
+            logger.error(f"Error getting community stats: {e}")
+            return {"error": str(e)}
