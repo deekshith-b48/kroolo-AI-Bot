@@ -4,7 +4,7 @@ Uses Pydantic settings for type safety and validation.
 """
 
 from typing import List, Optional
-from pydantic import Field, validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 import os
 
@@ -77,24 +77,27 @@ class Settings(BaseSettings):
     enable_admin_api: bool = Field(default=True, env="ENABLE_ADMIN_API")
     admin_session_timeout: int = Field(default=3600, env="ADMIN_SESSION_TIMEOUT")
     
-    @validator("rss_feeds", pre=True)
+    @field_validator("rss_feeds", mode="before")
+    @classmethod
     def parse_rss_feeds(cls, v):
         """Parse RSS feeds from comma-separated string."""
         if isinstance(v, str):
             return [feed.strip() for feed in v.split(",") if feed.strip()]
         return v
     
-    @validator("telegram_webhook_url")
+    @field_validator("telegram_webhook_url")
+    @classmethod
     def validate_webhook_url(cls, v):
-        """Ensure webhook URL is HTTPS."""
-        if not v.startswith("https://"):
-            raise ValueError("Webhook URL must use HTTPS")
+        """Ensure webhook URL is valid."""
+        if not v.startswith(("http://", "https://")):
+            raise ValueError("Webhook URL must use HTTP or HTTPS")
         return v
     
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "case_sensitive": False
+    }
 
 
 # Global settings instance
